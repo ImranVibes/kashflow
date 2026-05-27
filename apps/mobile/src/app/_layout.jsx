@@ -6,6 +6,7 @@ import { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useCurrencyStore } from "@/utils/useCurrencyStore";
+import { offlineDb } from "@/utils/offlineDb";
 SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient({
@@ -26,6 +27,7 @@ export default function RootLayout() {
   useEffect(() => {
     initiate();
     loadCurrency();
+    offlineDb.initialize();
   }, [initiate, loadCurrency]);
 
   useEffect(() => {

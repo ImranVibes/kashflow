@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -10,20 +10,46 @@ import {
 } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
-import { Download, Upload, Database, ShieldCheck } from "lucide-react-native";
+import { useQueryClient } from "@tanstack/react-query";
+import { 
+  Download, 
+  Upload, 
+  Database, 
+  ShieldCheck, 
+  Cloud, 
+  RefreshCw, 
+  Link, 
+  LogOut 
+} from "lucide-react-native";
+import { googleDriveBackup } from "@/utils/googleDriveBackup";
+import { offlineDb } from "@/utils/offlineDb";
 
 export function BackupSection() {
+  const queryClient = useQueryClient();
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  
+  // Google Drive state
+  const [isLinking, setIsLinking] = useState(false);
+  const [isGoogleBackingUp, setIsGoogleBackingUp] = useState(false);
+  const [isGoogleRestoring, setIsGoogleRestoring] = useState(false);
+  const [googleProfile, setGoogleProfile] = useState(null);
 
+  useEffect(() => {
+    // Check if user is already linked with Google Drive on mount
+    googleDriveBackup.getLinkedProfile().then((profile) => {
+      if (profile) setGoogleProfile(profile);
+    });
+  }, []);
+
+  // --- Local JSON Backups ---
   const handleExport = async () => {
     setIsExporting(true);
     try {
-      const response = await fetch("/api/data-export");
-      if (!response.ok) throw new Error("Export failed");
-      const json = await response.text();
+      const backupData = await offlineDb.exportBackup();
+      const json = JSON.stringify(backupData);
 
-      const filename = `business-backup-${new Date().toISOString().split("T")[0]}.json`;
+      const filename = `kashflow-backup-${new Date().toISOString().split("T")[0]}.json`;
       const fileUri = FileSystem.cacheDirectory + filename;
       await FileSystem.writeAsStringAsync(fileUri, json, {
         encoding: FileSystem.EncodingType.UTF8,
@@ -38,7 +64,7 @@ export function BackupSection() {
       console.error("Export error:", error);
       Alert.alert(
         "Export Failed",
-        "Could not export your data. Please try again.",
+        "Could not export your data. Please try again."
       );
     } finally {
       setIsExporting(false);
@@ -57,7 +83,7 @@ export function BackupSection() {
       const file = result.assets[0];
       Alert.alert(
         "Import Backup",
-        "This will ADD all data from the backup file to your current data. Existing data will NOT be deleted.\n\nContinue?",
+        "This will OVERWRITE your current transactions and category budgets with the backup file.\n\nContinue?",
         [
           { text: "Cancel", style: "cancel" },
           {
@@ -69,36 +95,119 @@ export function BackupSection() {
                   encoding: FileSystem.EncodingType.UTF8,
                 });
                 const backup = JSON.parse(content);
+                const data = await offlineDb.importBackup(backup);
 
-                const response = await fetch("/api/data-import", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify(backup),
-                });
-                if (!response.ok) throw new Error("Import failed");
-                const data = await response.json();
+                // Invalidate all queries to refresh the screen data
+                queryClient.invalidateQueries();
 
                 Alert.alert(
                   "✓ Import Successful",
-                  `Imported:\n• ${data.imported.transactions} transactions\n• ${data.imported.categories} new categories\n• ${data.imported.budgets} budgets\n• ${data.imported.recurring} recurring rules`,
+                  `Imported:\n• ${data.imported.transactions} transactions\n• ${data.imported.categories} categories\n• ${data.imported.budgets} budgets\n• ${data.imported.recurring} recurring rules`
                 );
               } catch (err) {
                 console.error("Import error:", err);
                 Alert.alert(
                   "Import Failed",
-                  "Could not read the backup file. Make sure it's a valid backup.",
+                  "Could not read the backup file. Make sure it's a valid backup."
                 );
               } finally {
                 setIsImporting(false);
               }
             },
           },
-        ],
+        ]
       );
     } catch (error) {
       console.error("Picker error:", error);
       Alert.alert("Error", "Could not open file picker.");
     }
+  };
+
+  // --- Google Drive Backups ---
+  const handleLinkGoogle = async () => {
+    setIsLinking(true);
+    try {
+      const res = await googleDriveBackup.linkAccount();
+      if (res.success && res.profile) {
+        setGoogleProfile(res.profile);
+        Alert.alert("✓ Account Linked", `Successfully linked to Google Drive as ${res.profile.name || res.profile.email}`);
+      } else if (res.error) {
+        Alert.alert("Link Failed", res.error);
+      }
+    } catch (err) {
+      Alert.alert("Error", "An unexpected error occurred during link.");
+    } finally {
+      setIsLinking(false);
+    }
+  };
+
+  const handleUnlinkGoogle = async () => {
+    Alert.alert(
+      "Unlink Google Account",
+      "Are you sure you want to unlink your Google Drive account?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Unlink",
+          style: "destructive",
+          onPress: async () => {
+            await googleDriveBackup.unlinkAccount();
+            setGoogleProfile(null);
+          },
+        },
+      ]
+    );
+  };
+
+  const handleGoogleBackup = async () => {
+    setIsGoogleBackingUp(true);
+    try {
+      const backupData = await offlineDb.exportBackup();
+      await googleDriveBackup.exportBackupToDrive(backupData);
+      
+      Alert.alert(
+        "✓ Backup Successful",
+        "Your data is securely uploaded to your personal Google Drive app folder!"
+      );
+    } catch (err) {
+      console.error("Google backup error:", err);
+      Alert.alert("Backup Failed", err.message || "Failed to backup data to Google Drive.");
+    } finally {
+      setIsGoogleBackingUp(false);
+    }
+  };
+
+  const handleGoogleRestore = async () => {
+    Alert.alert(
+      "Restore from Google Drive",
+      "This will replace all your current data on this device with your Google Drive backup. Are you sure you want to continue?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Restore",
+          onPress: async () => {
+            setIsGoogleRestoring(true);
+            try {
+              const backup = await googleDriveBackup.importBackupFromDrive();
+              const result = await offlineDb.importBackup(backup);
+              
+              // Invalidate queries to refresh tabs UI
+              queryClient.invalidateQueries();
+
+              Alert.alert(
+                "✓ Restore Successful",
+                `Restored from Google Drive:\n• ${result.imported.transactions} transactions\n• ${result.imported.categories} categories\n• ${result.imported.budgets} budgets\n• ${result.imported.recurring} recurring rules`
+              );
+            } catch (err) {
+              console.error("Google restore error:", err);
+              Alert.alert("Restore Failed", err.message || "Failed to download or restore backup from Google Drive.");
+            } finally {
+              setIsGoogleRestoring(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const cardStyle = {
@@ -125,7 +234,7 @@ export function BackupSection() {
           letterSpacing: 0.5,
         }}
       >
-        Data Backup
+        Data Backup & Sync
       </Text>
 
       {/* Info card */}
@@ -135,7 +244,7 @@ export function BackupSection() {
           backgroundColor: "#EFF6FF",
           borderWidth: 1,
           borderColor: "#BFDBFE",
-          marginBottom: 20,
+          marginBottom: 16,
           flexDirection: "row",
           gap: 12,
         }}
@@ -150,16 +259,161 @@ export function BackupSection() {
               marginBottom: 4,
             }}
           >
-            Your data is in the cloud
+            100% Offline & Private
           </Text>
           <Text style={{ fontSize: 13, color: "#3B82F6", lineHeight: 18 }}>
-            All transactions are saved online. Use backup to transfer data
-            between devices or keep an offline copy.
+            All your transaction history, budgets, and categories are saved locally on this phone. Use Google Drive or JSON files to securely back them up.
           </Text>
         </View>
       </View>
 
-      {/* Export */}
+      {/* Google Drive Card */}
+      <View style={cardStyle}>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 12,
+            marginBottom: 12,
+          }}
+        >
+          <View
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 12,
+              backgroundColor: "#E0F2FE",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Cloud size={20} color="#0284C7" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 16, fontWeight: "700", color: "#1C1C1E" }}>
+              Google Drive Cloud Sync
+            </Text>
+            {googleProfile ? (
+              <Text style={{ fontSize: 13, color: "#10B981", fontWeight: "600", marginTop: 2 }}>
+                ✓ Linked as {googleProfile.name || googleProfile.email}
+              </Text>
+            ) : (
+              <Text style={{ fontSize: 13, color: "#8E8E93", marginTop: 2 }}>
+                Keep your backup automatically inside your Google Drive
+              </Text>
+            )}
+          </View>
+        </View>
+
+        {!googleProfile ? (
+          <TouchableOpacity
+            onPress={handleLinkGoogle}
+            disabled={isLinking}
+            activeOpacity={0.8}
+            style={{
+              backgroundColor: "#0284C7",
+              borderRadius: 10,
+              paddingVertical: 13,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+            }}
+          >
+            {isLinking ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <>
+                <Link size={16} color="#FFFFFF" />
+                <Text style={{ color: "#FFFFFF", fontWeight: "700", fontSize: 15 }}>
+                  Link Google Account
+                </Text>
+              </>
+            )}
+          </TouchableOpacity>
+        ) : (
+          <View style={{ gap: 8 }}>
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              {/* Export to Google Drive */}
+              <TouchableOpacity
+                onPress={handleGoogleBackup}
+                disabled={isGoogleBackingUp || isGoogleRestoring}
+                activeOpacity={0.8}
+                style={{
+                  flex: 1,
+                  backgroundColor: "#0284C7",
+                  borderRadius: 10,
+                  paddingVertical: 12,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                }}
+              >
+                {isGoogleBackingUp ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <>
+                    <RefreshCw size={15} color="#FFFFFF" />
+                    <Text style={{ color: "#FFFFFF", fontWeight: "600", fontSize: 14 }}>
+                      Backup Now
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
+              {/* Restore from Google Drive */}
+              <TouchableOpacity
+                onPress={handleGoogleRestore}
+                disabled={isGoogleBackingUp || isGoogleRestoring}
+                activeOpacity={0.8}
+                style={{
+                  flex: 1,
+                  backgroundColor: "#F0F9FF",
+                  borderRadius: 10,
+                  paddingVertical: 12,
+                  borderWidth: 1.5,
+                  borderColor: "#B9E6FE",
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                }}
+              >
+                {isGoogleRestoring ? (
+                  <ActivityIndicator color="#0284C7" />
+                ) : (
+                  <>
+                    <Download size={15} color="#0284C7" />
+                    <Text style={{ color: "#0284C7", fontWeight: "600", fontSize: 14 }}>
+                      Restore
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+
+            {/* Unlink */}
+            <TouchableOpacity
+              onPress={handleUnlinkGoogle}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 6,
+                paddingVertical: 8,
+              }}
+            >
+              <LogOut size={14} color="#EF4444" />
+              <Text style={{ fontSize: 13, color: "#EF4444", fontWeight: "500" }}>
+                Unlink Account
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
+
+      {/* Local Export File */}
       <View style={cardStyle}>
         <View
           style={{
@@ -183,10 +437,10 @@ export function BackupSection() {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 16, fontWeight: "700", color: "#1C1C1E" }}>
-              Export Backup
+              Export JSON File
             </Text>
             <Text style={{ fontSize: 13, color: "#8E8E93", marginTop: 2 }}>
-              Save all transactions, categories & settings as a JSON file
+              Save transactions, categories & settings as a local file
             </Text>
           </View>
         </View>
@@ -205,13 +459,13 @@ export function BackupSection() {
             <ActivityIndicator color="#FFFFFF" />
           ) : (
             <Text style={{ color: "#FFFFFF", fontWeight: "700", fontSize: 15 }}>
-              Export Now
+              Export to File
             </Text>
           )}
         </TouchableOpacity>
       </View>
 
-      {/* Import */}
+      {/* Local Import File */}
       <View style={cardStyle}>
         <View
           style={{
@@ -235,10 +489,10 @@ export function BackupSection() {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 16, fontWeight: "700", color: "#1C1C1E" }}>
-              Import Backup
+              Import JSON File
             </Text>
             <Text style={{ fontSize: 13, color: "#8E8E93", marginTop: 2 }}>
-              Restore from a backup file. Existing data will not be deleted.
+              Import & restore transactions from an existing JSON backup file
             </Text>
           </View>
         </View>
@@ -257,7 +511,7 @@ export function BackupSection() {
             <ActivityIndicator color="#FFFFFF" />
           ) : (
             <Text style={{ color: "#FFFFFF", fontWeight: "700", fontSize: 15 }}>
-              Choose File to Import
+              Select File to Import
             </Text>
           )}
         </TouchableOpacity>
@@ -276,10 +530,10 @@ export function BackupSection() {
         <Text
           style={{ flex: 1, fontSize: 13, color: "#8E8E93", lineHeight: 18 }}
         >
-          Backup includes: all transactions, categories, budgets, and recurring
-          rules.
+          Backup includes: all transactions, categories, budgets, and recurring rules.
         </Text>
       </View>
     </View>
   );
 }
+export default BackupSection;

@@ -24,6 +24,7 @@ import {
   EyeOff,
 } from "lucide-react-native";
 import { AI_PROVIDERS } from "../../data/aiModels";
+import { offlineDb } from "../../utils/offlineDb";
 
 const shadow = {
   shadowColor: "#000",
@@ -768,21 +769,13 @@ export function ModelSection() {
   const { data, isLoading } = useQuery({
     queryKey: ["ai-config"],
     queryFn: async () => {
-      const r = await fetch("/api/ai-config");
-      if (!r.ok) throw new Error("Failed");
-      return r.json();
+      return offlineDb.getAiConfigs();
     },
   });
 
   const saveMutation = useMutation({
     mutationFn: async (body) => {
-      const r = await fetch("/api/ai-config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!r.ok) throw new Error("Failed to save");
-      return r.json();
+      return offlineDb.saveAiConfig(body);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["ai-config"] });
@@ -797,12 +790,7 @@ export function ModelSection() {
 
   const activateMutation = useMutation({
     mutationFn: async (id) => {
-      const r = await fetch(`/api/ai-config/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ is_active: true }),
-      });
-      return r.json();
+      return offlineDb.activateAiConfig(id);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["ai-config"] }),
     onError: () => Alert.alert("Error", "Failed to activate"),
@@ -810,8 +798,7 @@ export function ModelSection() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id) => {
-      const r = await fetch(`/api/ai-config/${id}`, { method: "DELETE" });
-      return r.json();
+      return offlineDb.deleteAiConfig(id);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["ai-config"] }),
     onError: () => Alert.alert("Error", "Failed to remove"),

@@ -26,6 +26,8 @@ import {
 import { format } from "date-fns";
 import { useCurrencyStore } from "@/utils/useCurrencyStore";
 import { usePersistedQuery } from "@/utils/localCache";
+import { offlineDb } from "@/utils/offlineDb";
+import { offlineAiParser } from "@/utils/offlineAiParser";
 
 // Premium card shadow style
 const shadow = {
@@ -59,9 +61,7 @@ export default function HomeScreen() {
   const { data: analytics, isLoading } = useQuery({
     queryKey: ["analytics", "month"],
     queryFn: async () => {
-      const r = await fetch("/api/analytics?period=month");
-      if (!r.ok) throw new Error("Failed");
-      const data = await r.json();
+      const data = await offlineDb.getAnalytics("month");
       persistAnalytics(data); // keep local cache fresh
       return data;
     },
@@ -71,13 +71,7 @@ export default function HomeScreen() {
 
   const addTransactionMutation = useMutation({
     mutationFn: async (t) => {
-      const r = await fetch("/api/transactions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(t),
-      });
-      if (!r.ok) throw new Error("Failed");
-      return r.json();
+      return offlineDb.addTransaction(t);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["analytics"] });
@@ -92,13 +86,7 @@ export default function HomeScreen() {
     if (!aiInput.trim()) return;
     setIsParsing(true);
     try {
-      const r = await fetch("/api/ai-parse", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ input: aiInput, currency }),
-      });
-      if (!r.ok) throw new Error("Failed");
-      const parsed = await r.json();
+      const parsed = await offlineAiParser.parseTransaction(aiInput);
       Alert.alert(
         parsed.transaction_type === "expense"
           ? "💸 Expense Detected"
@@ -108,12 +96,27 @@ export default function HomeScreen() {
           { text: "Cancel", style: "cancel" },
           {
             text: "Add Transaction",
-            onPress: () => addTransactionMutation.mutate(parsed),
+            onPress: () => addTransactionMutation.mutate({
+              transaction_type: parsed.transaction_type,
+              amount: parsed.amount,
+              description: parsed.description,
+              category_id: parsed.category_id,
+              notes: "Added via AI Smart Entry",
+              transaction_date: new Date().toISOString().split("T")[0],
+            }),
           },
         ],
       );
-    } catch {
-      Alert.alert("Error", "Could not understand input. Try again.");
+    } catch (e) {
+      if (e.message === "NO_API_KEY") {
+        Alert.alert(
+          "API Key Required ✦",
+          "KashFlow is a 100% offline-only private app. To use AI Smart Entry, please add your own free Gemini API Key under Settings > AI Model Settings.",
+          [{ text: "OK" }]
+        );
+      } else {
+        Alert.alert("Error", e.message || "Could not understand input. Try again.");
+      }
     } finally {
       setIsParsing(false);
     }

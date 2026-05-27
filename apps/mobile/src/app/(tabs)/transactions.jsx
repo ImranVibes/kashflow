@@ -25,6 +25,7 @@ import {
 import { format } from "date-fns";
 import { useCurrencyStore } from "@/utils/useCurrencyStore";
 import { usePersistedQuery } from "@/utils/localCache";
+import { offlineDb } from "@/utils/offlineDb";
 
 function AddTransactionModal({ visible, onClose, categories, onSuccess }) {
   const { currency } = useCurrencyStore();
@@ -39,13 +40,7 @@ function AddTransactionModal({ visible, onClose, categories, onSuccess }) {
 
   const mutation = useMutation({
     mutationFn: async (data) => {
-      const response = await fetch("/api/transactions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-      if (!response.ok) throw new Error("Failed to add transaction");
-      return response.json();
+      return offlineDb.addTransaction(data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
@@ -384,40 +379,28 @@ export default function TransactionsScreen() {
   const { data: transactions = [], isLoading } = useQuery({
     queryKey: ["transactions", activeFilter, searchQuery],
     queryFn: async () => {
-      const params = new URLSearchParams();
-      if (activeFilter !== "all") params.append("type", activeFilter);
-      if (searchQuery) params.append("search", searchQuery);
-      const response = await fetch(`/api/transactions?${params.toString()}`);
-      if (!response.ok) throw new Error("Failed to fetch transactions");
-      const data = await response.json();
-      // Save latest unfiltered data to local cache
-      if (activeFilter === "all" && !searchQuery) {
-        persistTransactions(data);
+      const data = await offlineDb.getTransactions();
+      let filtered = data;
+      if (activeFilter && activeFilter !== "all") {
+        filtered = filtered.filter(t => t.transaction_type === activeFilter);
       }
-      return data;
+      if (searchQuery) {
+        filtered = filtered.filter(t => t.description.toLowerCase().includes(searchQuery.toLowerCase()));
+      }
+      return filtered;
     },
-    // Show cached data immediately while fetching — feels instant
-    placeholderData:
-      activeFilter === "all" && !searchQuery ? cachedTransactions : undefined,
-    staleTime: 1000 * 60, // 1 minute before re-fetching in background
   });
 
   const { data: categories = [] } = useQuery({
     queryKey: ["categories"],
     queryFn: async () => {
-      const response = await fetch("/api/categories");
-      if (!response.ok) throw new Error("Failed to fetch categories");
-      return response.json();
+      return offlineDb.getCategories();
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (id) => {
-      const response = await fetch(`/api/transactions/${id}`, {
-        method: "DELETE",
-      });
-      if (!response.ok) throw new Error("Failed to delete");
-      return response.json();
+      return offlineDb.deleteTransaction(id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["transactions"] });

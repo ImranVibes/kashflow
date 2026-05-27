@@ -6,7 +6,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
-  Linking,
+  Share,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
@@ -20,6 +20,7 @@ import {
   AlertTriangle,
 } from "lucide-react-native";
 import { useCurrencyStore } from "@/utils/useCurrencyStore";
+import { offlineDb } from "@/utils/offlineDb";
 
 export default function AnalyticsScreen() {
   const insets = useSafeAreaInsets();
@@ -31,42 +32,50 @@ export default function AnalyticsScreen() {
   const { data: analytics, isLoading } = useQuery({
     queryKey: ["analytics", period],
     queryFn: async () => {
-      const response = await fetch(`/api/analytics?period=${period}`);
-      if (!response.ok) throw new Error("Failed to fetch analytics");
-      return response.json();
+      return offlineDb.getAnalytics(period);
     },
   });
 
   const { data: budgets = [] } = useQuery({
     queryKey: ["budgets"],
     queryFn: async () => {
-      const response = await fetch("/api/budgets");
-      if (!response.ok) throw new Error("Failed to fetch budgets");
-      return response.json();
+      return offlineDb.getBudgets();
     },
   });
 
-  const handleExportPDF = useCallback(async () => {
+  const handleExportCSV = useCallback(async () => {
     setIsExporting(true);
     try {
-      const baseUrl = process.env.EXPO_PUBLIC_BASE_URL || "";
-      const pdfUrl = `${baseUrl}/api/reports?period=${period}`;
-      const supported = await Linking.canOpenURL(pdfUrl);
-      if (supported) {
-        await Linking.openURL(pdfUrl);
-      } else {
-        Alert.alert(
-          "Export Ready",
-          `Your PDF report is ready. Open this URL in your browser:\n\n${pdfUrl}`,
-        );
+      if (!analytics || !analytics.recentTransactions || analytics.recentTransactions.length === 0) {
+        Alert.alert("No Data", "There are no transactions to export for this period.");
+        return;
       }
+
+      const headers = ["Date", "Description", "Type", "Category", "Amount"];
+      const rows = analytics.recentTransactions.map((t) => [
+        t.transaction_date,
+        `"${t.description.replace(/"/g, '""')}"`,
+        t.transaction_type,
+        `"${(t.category_name || "Uncategorized").replace(/"/g, '""')}"`,
+        parseFloat(t.amount).toFixed(2),
+      ]);
+
+      const csvContent = [
+        headers.join(","),
+        ...rows.map((r) => r.join(",")),
+      ].join("\n");
+
+      await Share.share({
+        message: csvContent,
+        title: `KashFlow_${period}_Report.csv`,
+      });
     } catch (error) {
-      console.error("Export error:", error);
-      Alert.alert("Error", "Could not export report. Please try again.");
+      console.error("CSV Export error:", error);
+      Alert.alert("Error", "Could not export CSV report. Please try again.");
     } finally {
       setIsExporting(false);
     }
-  }, [period]);
+  }, [analytics, period]);
 
   const summary = analytics?.summary || {
     totalIncome: 0,
@@ -114,7 +123,7 @@ export default function AnalyticsScreen() {
             Analytics
           </Text>
           <TouchableOpacity
-            onPress={handleExportPDF}
+            onPress={handleExportCSV}
             disabled={isExporting}
             style={{
               flexDirection: "row",
@@ -140,7 +149,7 @@ export default function AnalyticsScreen() {
                 color: isExporting ? "#9CA3AF" : "#2563EB",
               }}
             >
-              {isExporting ? "Exporting…" : "Export PDF"}
+              {isExporting ? "Exporting…" : "Export CSV"}
             </Text>
           </TouchableOpacity>
         </View>

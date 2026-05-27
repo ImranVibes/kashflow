@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { X } from "lucide-react-native";
+import { offlineDb } from "@/utils/offlineDb";
 
 export function AddBudgetModal({ visible, onClose, categories }) {
   const queryClient = useQueryClient();
@@ -24,13 +25,7 @@ export function AddBudgetModal({ visible, onClose, categories }) {
 
   const mutation = useMutation({
     mutationFn: async (data) => {
-      const response = await fetch("/api/budgets", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-      if (!response.ok) throw new Error("Failed to save budget");
-      return response.json();
+      return offlineDb.addOrUpdateBudget(data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["budgets"] });
