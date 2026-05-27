@@ -353,6 +353,66 @@ export const offlineDb = {
     return { success: true };
   },
 
+  // --- Currency Conversion ---
+  async convertCurrency(fromCode, toCode) {
+    const RATES = {
+      USD: 1.0,
+      EUR: 0.92,
+      GBP: 0.79,
+      BDT: 117.0,
+      INR: 83.5,
+      PKR: 278.0,
+      JPY: 156.0,
+      CNY: 7.25,
+      AUD: 1.50,
+      CAD: 1.36,
+      CHF: 0.91,
+      SAR: 3.75,
+      AED: 3.67,
+      MYR: 4.70,
+      SGD: 1.35,
+      THB: 36.5,
+      IDR: 16200.0,
+      KRW: 1360.0,
+      PHP: 58.0,
+      VND: 25400.0,
+      NGN: 1500.0,
+      ZAR: 18.5,
+      BRL: 5.15,
+      MXN: 16.7,
+      TRY: 32.2,
+      RUB: 90.0,
+      EGP: 47.0,
+      NPR: 133.0,
+      LKR: 300.0,
+      MMK: 2100.0,
+    };
+
+    const fromRate = RATES[fromCode] || 1.0;
+    const toRate = RATES[toCode] || 1.0;
+    const rate = toRate / fromRate;
+
+    // Convert transactions
+    const rawTx = await AsyncStorage.getItem(KEYS.TRANSACTIONS);
+    const transactions = rawTx ? JSON.parse(rawTx) : [];
+    const convertedTx = transactions.map((t) => ({
+      ...t,
+      amount: parseFloat((parseFloat(t.amount) * rate).toFixed(2)),
+    }));
+    await AsyncStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify(convertedTx));
+
+    // Convert budgets
+    const rawBudgets = await AsyncStorage.getItem(KEYS.BUDGETS);
+    const budgets = rawBudgets ? JSON.parse(rawBudgets) : [];
+    const convertedBudgets = budgets.map((b) => ({
+      ...b,
+      amount: parseFloat((parseFloat(b.amount) * rate).toFixed(2)),
+    }));
+    await AsyncStorage.setItem(KEYS.BUDGETS, JSON.stringify(convertedBudgets));
+
+    return { success: true };
+  },
+
   // --- Complete Import & Export ---
   async exportBackup() {
     const transactions = await this.getTransactions();

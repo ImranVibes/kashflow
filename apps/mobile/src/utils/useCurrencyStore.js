@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { offlineDb } from "./offlineDb";
 
 export const CURRENCIES = [
   { code: "USD", symbol: "$", name: "US Dollar", flag: "🇺🇸" },
@@ -37,7 +38,7 @@ export const CURRENCIES = [
 const STORAGE_KEY = "selected_currency_code";
 
 export const useCurrencyStore = create((set, get) => ({
-  currency: CURRENCIES[0],
+  currency: CURRENCIES.find((c) => c.code === "BDT") || CURRENCIES[0],
   isLoaded: false,
   isConverting: false,
   conversionError: null,
@@ -47,7 +48,15 @@ export const useCurrencyStore = create((set, get) => ({
       const code = await AsyncStorage.getItem(STORAGE_KEY);
       if (code) {
         const found = CURRENCIES.find((c) => c.code === code);
-        if (found) set({ currency: found });
+        if (found) {
+          set({ currency: found });
+        }
+      } else {
+        const bdt = CURRENCIES.find((c) => c.code === "BDT");
+        if (bdt) {
+          await AsyncStorage.setItem(STORAGE_KEY, "BDT");
+          set({ currency: bdt });
+        }
       }
     } catch (e) {
       console.error("Failed to load currency:", e);
@@ -65,29 +74,17 @@ export const useCurrencyStore = create((set, get) => ({
     set({ isConverting: true, conversionError: null });
 
     try {
-      const response = await fetch("/api/currency-convert", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fromCurrency: currentCurrency.code,
-          toCurrency: code,
-        }),
-      });
+      // Local client-side conversion rate database mapping
+      await offlineDb.convertCurrency(currentCurrency.code, code);
 
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || "Conversion failed");
-      }
-
-      // All DB values updated — now switch the displayed currency
+      // All local tables converted — now switch currency state
       set({ currency: found, isConverting: false });
       await AsyncStorage.setItem(STORAGE_KEY, code);
     } catch (e) {
       console.error("Currency conversion failed:", e);
       set({
         isConverting: false,
-        conversionError:
-          e.message || "Failed to convert. Check your connection.",
+        conversionError: e.message || "Failed to convert currency offline.",
       });
     }
   },
