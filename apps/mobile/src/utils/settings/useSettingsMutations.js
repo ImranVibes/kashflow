@@ -48,10 +48,28 @@ export function useSettingsMutations() {
       Alert.alert("Error", "Failed to process recurring transactions"),
   });
 
+  const addCategoryMutation = useMutation({
+    mutationFn: async (cat) => {
+      return offlineDb.addCategory(cat);
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["categories"] }),
+    onError: () => Alert.alert("Error", "Failed to add category"),
+  });
+
+  const deleteCategoryMutation = useMutation({
+    mutationFn: async (id) => {
+      return offlineDb.deleteCategory(id);
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["categories"] }),
+    onError: () => Alert.alert("Error", "Failed to delete category"),
+  });
+
   return {
     deleteBudgetMutation,
     deleteRecurringMutation,
     toggleRecurringMutation,
     processRecurringMutation,
+    addCategoryMutation,
+    deleteCategoryMutation,
   };
 }

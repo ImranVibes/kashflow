@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
+import * as Sharing from "expo-sharing";
 import { useQueryClient } from "@tanstack/react-query";
 import { 
   Download, 
@@ -55,8 +56,12 @@ export function BackupSection() {
         encoding: FileSystem.EncodingType.UTF8,
       });
 
-      if (Platform.OS === "ios") {
-        await Share.share({ url: fileUri, title: filename });
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(fileUri, {
+          mimeType: "application/json",
+          dialogTitle: "Export KashFlow Backup",
+          UTI: "public.json",
+        });
       } else {
         await Share.share({ message: json, title: filename });
       }

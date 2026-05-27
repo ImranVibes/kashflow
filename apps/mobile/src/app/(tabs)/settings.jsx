@@ -42,6 +42,8 @@ export default function SettingsScreen() {
     deleteRecurringMutation,
     toggleRecurringMutation,
     processRecurringMutation,
+    addCategoryMutation,
+    deleteCategoryMutation,
   } = useSettingsMutations();
 
   const sections = [
@@ -145,6 +147,8 @@ export default function SettingsScreen() {
             <CategoriesSection
               expenseCategories={expenseCategories}
               incomeCategories={incomeCategories}
+              onAddCategory={(cat) => addCategoryMutation.mutate(cat)}
+              onDeleteCategory={(id) => deleteCategoryMutation.mutate(id)}
             />
           </MotiView>
         )}
