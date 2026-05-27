@@ -27,6 +27,7 @@ import { useCurrencyStore } from "@/utils/useCurrencyStore";
 import { usePersistedQuery } from "@/utils/localCache";
 import { offlineDb } from "@/utils/offlineDb";
 import AddTransactionModal from "@/components/AddTransactionModal";
+import TransactionDetailModal from "@/components/TransactionDetailModal";
 
 export default function TransactionsScreen() {
   const insets = useSafeAreaInsets();
@@ -34,6 +35,7 @@ export default function TransactionsScreen() {
   const [activeFilter, setActiveFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
+  const [selectedTransaction, setSelectedTransaction] = useState(null);
   const { currency } = useCurrencyStore();
   const sym = currency.symbol;
 
@@ -339,72 +341,80 @@ export default function TransactionsScreen() {
                         borderRadius: 10,
                         borderWidth: 1,
                         borderColor: "#E5E7EB",
-                        padding: 12,
                         marginBottom: 8,
                         flexDirection: "row",
                         alignItems: "center",
                       }}
                     >
-                      <View
+                      <TouchableOpacity
+                        onPress={() => setSelectedTransaction(transaction)}
+                        activeOpacity={0.7}
                         style={{
-                          width: 42,
-                          height: 42,
-                          borderRadius: 21,
-                          backgroundColor:
-                            transaction.transaction_type === "income"
-                              ? "#DCFCE7"
-                              : "#FEE2E2",
+                          flex: 1,
+                          flexDirection: "row",
                           alignItems: "center",
-                          justifyContent: "center",
-                          marginRight: 12,
+                          padding: 12,
                         }}
                       >
-                        {transaction.transaction_type === "income" ? (
-                          <ArrowUpRight size={20} color="#16A34A" />
-                        ) : (
-                          <ArrowDownRight size={20} color="#DC2626" />
-                        )}
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text
+                        <View
                           style={{
-                            fontSize: 14,
-                            fontWeight: "600",
-                            color: "#111827",
-                            marginBottom: 2,
+                            width: 42,
+                            height: 42,
+                            borderRadius: 21,
+                            backgroundColor:
+                              transaction.transaction_type === "income"
+                                ? "#DCFCE7"
+                                : "#FEE2E2",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            marginRight: 12,
                           }}
-                          numberOfLines={1}
                         >
-                          {transaction.description}
-                        </Text>
-                        <Text style={{ fontSize: 12, color: "#6B7280" }}>
-                          {transaction.category_name || "Uncategorized"}
-                        </Text>
-                      </View>
-                      <View style={{ alignItems: "flex-end", gap: 6 }}>
+                          {transaction.transaction_type === "income" ? (
+                            <ArrowUpRight size={20} color="#16A34A" />
+                          ) : (
+                            <ArrowDownRight size={20} color="#DC2626" />
+                          )}
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text
+                            style={{
+                              fontSize: 14,
+                              fontWeight: "600",
+                              color: "#111827",
+                              marginBottom: 2,
+                            }}
+                            numberOfLines={1}
+                          >
+                            {transaction.description}
+                          </Text>
+                          <Text style={{ fontSize: 12, color: "#6B7280" }}>
+                            {transaction.category_name || "Uncategorized"}
+                          </Text>
+                        </View>
                         <Text
                           style={{
                             fontSize: 15,
                             fontWeight: "700",
+                            marginRight: 6,
                             color:
                               transaction.transaction_type === "income"
                                 ? "#16A34A"
                                 : "#DC2626",
                           }}
                         >
-                          {transaction.transaction_type === "income"
-                            ? "+"
-                            : "-"}
+                          {transaction.transaction_type === "income" ? "+" : "-"}
                           {sym}
                           {parseFloat(transaction.amount).toFixed(2)}
                         </Text>
-                        <TouchableOpacity
-                          onPress={() => handleDelete(transaction)}
-                          style={{ padding: 2 }}
-                        >
-                          <Trash2 size={16} color="#D1D5DB" />
-                        </TouchableOpacity>
-                      </View>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        onPress={() => handleDelete(transaction)}
+                        style={{ padding: 12, paddingLeft: 6 }}
+                      >
+                        <Trash2 size={16} color="#D1D5DB" />
+                      </TouchableOpacity>
                     </View>
                   ))}
                 </View>
@@ -412,6 +422,12 @@ export default function TransactionsScreen() {
             })
         )}
       </ScrollView>
+
+      <TransactionDetailModal
+        visible={!!selectedTransaction}
+        onClose={() => setSelectedTransaction(null)}
+        transaction={selectedTransaction}
+      />
     </View>
   );
 }

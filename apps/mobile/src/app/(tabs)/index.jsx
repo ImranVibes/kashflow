@@ -28,6 +28,7 @@ import { useCurrencyStore } from "@/utils/useCurrencyStore";
 import { usePersistedQuery } from "@/utils/localCache";
 import { offlineDb } from "@/utils/offlineDb";
 import { offlineAiParser } from "@/utils/offlineAiParser";
+import TransactionDetailModal from "@/components/TransactionDetailModal";
 
 // Premium card shadow style
 const shadow = {
@@ -50,6 +51,7 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const [aiInput, setAiInput] = useState("");
+  const [selectedTransaction, setSelectedTransaction] = useState(null);
   const [isParsing, setIsParsing] = useState(false);
   const { currency } = useCurrencyStore();
   const sym = currency.symbol;
@@ -546,7 +548,9 @@ export default function HomeScreen() {
                   animate={{ opacity: 1, translateX: 0 }}
                   transition={{ type: "timing", duration: 350, delay: i * 50 }}
                 >
-                  <View
+                  <TouchableOpacity
+                    onPress={() => setSelectedTransaction(t)}
+                    activeOpacity={0.7}
                     style={{
                       flexDirection: "row",
                       alignItems: "center",
@@ -615,13 +619,19 @@ export default function HomeScreen() {
                       {sym}
                       {parseFloat(t.amount).toFixed(2)}
                     </Text>
-                  </View>
+                  </TouchableOpacity>
                 </MotiView>
               ))}
             </View>
           )}
         </View>
       </ScrollView>
+
+      <TransactionDetailModal
+        visible={!!selectedTransaction}
+        onClose={() => setSelectedTransaction(null)}
+        transaction={selectedTransaction}
+      />
     </View>
   );
 }
